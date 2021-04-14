@@ -90,6 +90,11 @@ int is_argument(char* str)
 	{
 		if (strlen(str) < 3)
 		{
+			if (str[1] == 's')
+			{
+				file_name_suffix = "";
+				return 1;
+			}
 			// invalid argument
 			return 2;
 		}
@@ -112,7 +117,7 @@ int is_argument(char* str)
 		else if (parameter == 's')
 		{
 			// file name suffix
-			if (str[2] == '.')
+			if (str[2] == '.' && strlen(str) > 3)
 			{
 				int suffix_length = strlen(str) - 1;
 				char *suffix = malloc(sizeof(char) * suffix_length);
