@@ -75,6 +75,11 @@ int num_threads(char* arg)
 		option[i] = arg[i+2];
 	}
 	threads = atoi(option);
+	if (threads < 1)
+	{
+		perror("Error: Invalid Optional Argument");
+		exit(EXIT_FAILURE);
+	}
 	return threads;
 }
 
@@ -83,6 +88,11 @@ int is_argument(char* str)
 	char tag = str[0];
 	if (tag == '-')
 	{
+		if (strlen(str) < 3)
+		{
+			// invalid argument
+			return 2;
+		}
 		char parameter = tolower(str[1]);
 		if (parameter == 'd')
 		{
@@ -102,12 +112,20 @@ int is_argument(char* str)
 		else if (parameter == 's')
 		{
 			// file name suffix
-			int suffix_length = strlen(str) - 1;
-			char *suffix = malloc(sizeof(char) * suffix_length);
-			for (int i = 0; i < suffix_length; i++) {
-				suffix[i] = str[i+2];
+			if (str[2] == '.')
+			{
+				int suffix_length = strlen(str) - 1;
+				char *suffix = malloc(sizeof(char) * suffix_length);
+				for (int i = 0; i < suffix_length; i++) {
+					suffix[i] = str[i+2];
+				}
+				file_name_suffix = suffix;
 			}
-			file_name_suffix = suffix;
+			else
+			{
+				// invalid argument
+				return 2;
+			}
 		}
 		else
 		{
@@ -124,7 +142,8 @@ int process_arguments(int argc, char **argv)
 	for (int i = 1; i < argc; i++)
 	{
 		char *curr_arg = argv[i];
-		if (is_argument(curr_arg) == 0)
+		int argument_check = is_argument(curr_arg);
+		if (argument_check == 0)
 		{
 			if (is_directory(curr_arg) == 1)
 			{
@@ -134,6 +153,11 @@ int process_arguments(int argc, char **argv)
 			{
 				printf("F: %s\n", curr_arg);
 			}
+		}
+		else if (argument_check == 2)
+		{
+			perror("Error: Invalid Optional Argument");
+			exit(EXIT_FAILURE);
 		}
 	}
 	return 0;
