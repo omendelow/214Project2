@@ -7,6 +7,11 @@ WFD: WFD.o
 WFD.o: WFD.c
 	$(CC) -c $(CFLAGS) WFD.c
 
+newCompare: newCompare.o
+	$(CC) $(CFLAGS) -o $@ $^
+
+newCompare.o: newCompare.c
+	$(CC) -c $(CFLAGS) newCompare.c
 
 clean:
-	rm -f *.o WFD
+	rm -f *.o WFD newCompare
