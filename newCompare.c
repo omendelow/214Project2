@@ -294,8 +294,8 @@ int enqueue(Queue *Q, char* item)
     }
     Q->count++;
     
+	pthread_cond_signal(&Q->read_ready); // wake up a thread waiting to read (if any)
     pthread_mutex_unlock(&Q->lock); // now we're done
-    pthread_cond_signal(&Q->read_ready); // wake up a thread waiting to read (if any)
 
     return 0;
 }
@@ -304,11 +304,7 @@ char* dir_dequeue(Queue *Q)
 {
     pthread_mutex_lock(&Q->lock);
     
-    // while (Q->count == 0) 
-	// {
-    //     pthread_cond_wait(&Q->read_ready, &Q->lock);
-    // }
-	printf("\nCount: %d ActiveThreads: %d\n", Q->count, Q->activeThreads);
+	printf("\nQueue Count: %d ActiveThreads: %d\n", Q->count, Q->activeThreads);
 	if (Q->count == 0) {
 		Q->activeThreads--;
 		if (Q->activeThreads == 0) {
@@ -672,10 +668,8 @@ int main(int argc, char **argv)
 		args[i].fileQ = &fileQueue;
 		pthread_create(&tid[i], NULL, fileThread, &args[i]);
 	}
-
-
-	// sleep(1);
 	
+
 	
 	for (i = 0; i < totalThreads; i++) 
 	{

@@ -14,10 +14,10 @@ newCompare.o: newCompare.c
 	$(CC) -c $(CFLAGS) newCompare.c
 
 JSD: JSD.o
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 JSD.o: JSD.c
-	$(CC) -c $(CFLAGS) JSD.c
+	$(CC) -c $(CFLAGS) JSD.c -lm
 
 
 clean:
