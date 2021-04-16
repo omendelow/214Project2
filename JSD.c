@@ -240,7 +240,8 @@ void cleanUp(repoNode *head) {
 
 void cleanUpWFD(Node *head) {
     Node* curr = head;
-	while (curr != NULL) {
+	while (curr != NULL)
+	{
 		Node* temp = curr;
 		curr = curr->next;
 		free(temp->word);
@@ -550,7 +551,6 @@ void dirThread(Queue *dirQ, Queue *fileQ, char **argv)
 	
 
 
-
 }
 
 void fileThread(Queue *fileQ) {
@@ -649,7 +649,7 @@ void print_list(Node *head, int counter)
 	printf("\n");
 }
 
-void build_node(Node* node, char*word, int count, int total_num_word)
+void build_node(Node* node, char* word, int count, int total_num_word)
 {
 	int size = strlen(word);
 	node->word = malloc((size+1)*sizeof(char));
@@ -661,8 +661,9 @@ void build_node(Node* node, char*word, int count, int total_num_word)
 void comparison_avg(repoNode *one, repoNode *two)
 {
 	Node *head = malloc(sizeof(Node));
+	head->next = NULL;
 	Node *curr_node = head;
-	Node* new = NULL;
+	Node *new = NULL;
 	int total_num_word = one->numWords + two->numWords;
 	int counter = total_num_word;
 	printf("total_num_word: %d\n", total_num_word);
@@ -702,12 +703,14 @@ void comparison_avg(repoNode *one, repoNode *two)
 		}
 		counter -= curr_node->count-1;
 		new = malloc(sizeof(Node));
+		new->word = NULL;
+		new->next = NULL;
 		curr_node->next = new;
 		curr_node = new;
 	}
 	print_list(head, counter);
 	print_jsd(one, two, head);
-	//cleanUpWFD(head);
+	cleanUpWFD(head);
 }
 
 void print_file_pairs(repoNode * head)
@@ -724,7 +727,7 @@ void print_file_pairs(repoNode * head)
 			next_file = next_file->next;
 			pair_counter++;
 		}
-		head = head->next;
+		head = head->next;	
 	}
 }
 
