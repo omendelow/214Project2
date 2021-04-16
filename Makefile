@@ -13,5 +13,12 @@ newCompare: newCompare.o
 newCompare.o: newCompare.c
 	$(CC) -c $(CFLAGS) newCompare.c
 
+JSD: JSD.o
+	$(CC) $(CFLAGS) -o $@ $^
+
+JSD.o: JSD.c
+	$(CC) -c $(CFLAGS) JSD.c
+
+
 clean:
-	rm -f *.o WFD newCompare
+	rm -f *.o WFD newCompare JSD

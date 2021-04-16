@@ -245,9 +245,10 @@ typedef struct QNode
   
 typedef struct Queue 
 {
-    QNode *head;  // index of first item in Queue
-    QNode *rear;
+    QNode *head;  // first item in Queue
+    QNode *rear;  // last item in Queue
     int count;  // number of items in Queue
+	int activeThreads; // number of active Threads
     pthread_mutex_t lock;
     pthread_cond_t read_ready;  // wait for count > 0
     // pthread_cond_t write_ready; // wait for count < QUEUESIZE
@@ -299,7 +300,50 @@ int enqueue(Queue *Q, char* item)
     return 0;
 }
 
-char* dequeue(Queue *Q)
+char* dir_dequeue(Queue *Q)
+{
+    pthread_mutex_lock(&Q->lock);
+    
+    // while (Q->count == 0) 
+	// {
+    //     pthread_cond_wait(&Q->read_ready, &Q->lock);
+    // }
+	printf("\nCount: %d ActiveThreads: %d\n", Q->count, Q->activeThreads);
+	if (Q->count == 0) {
+		Q->activeThreads--;
+		if (Q->activeThreads == 0) {
+    		pthread_mutex_unlock(&Q->lock);
+			pthread_cond_broadcast(&Q->read_ready);
+			return NULL;
+		}
+		while (Q->count == 0 && Q->activeThreads > 0) {
+			pthread_cond_wait(&Q->read_ready, &Q->lock);
+		}
+		if (Q->count == 0) {
+			pthread_mutex_unlock(&Q->lock);
+			return NULL;
+		}
+		Q->activeThreads++;
+	}
+	
+    // now we have exclusive access and Queue is non-empty
+    
+    QNode *temp = Q->head;
+	int size = strlen(temp->data);
+	char* item = malloc((size+1)*sizeof(char));
+	strcpy(item, temp->data);
+    Q->head = Q->head->next;
+    free(temp->data);
+    free(temp);
+    Q->count--;
+
+    pthread_mutex_unlock(&Q->lock);
+    
+    return item;
+    // return pthread_cond_signal(&Q->write_ready);
+}
+
+char* file_dequeue(Queue *Q)
 {
     pthread_mutex_lock(&Q->lock);
     
@@ -346,6 +390,15 @@ int valid_suffix(char* file_path)
 {
 	int suffix_length = strlen(file_name_suffix);
 	int file_path_index = strlen(file_path) - 1;
+
+	if (suffix_length == 0) {
+		for (int i = 0; i < strlen(file_path); i++) {
+			if (file_path[i] == '.') {
+				return 0;
+			}
+		}
+	}
+
 	//file_path must have at least one character and then a . before suffix
 	if (file_path_index - 1 < suffix_length)
 	{
@@ -358,6 +411,8 @@ int valid_suffix(char* file_path)
 		{
 			return 0;
 		}
+		suffix_index--;
+		file_path_index--;
 	}
 	return 1;
 }
@@ -485,64 +540,54 @@ int process_arguments(int argc, char **argv, Queue *dirQueue, Queue *fileQueue)
 	return 0;
 }
 
-void dirThread(Queue *dirQ, Queue *fileQ, char **argv) 
+typedef struct targs {
+	Queue *dirQ;
+	Queue *fileQ;
+}targs;
+
+void *dirThread(void *A) 
 {
+	targs *args = A;
+
 	//while directory queue is not empty
-	while (dirQ->count != 0) 
+	while (args->dirQ->count != 0) 
 	{
 		// read directory name from queue
 		// open directory
 		//     add entries to file or directory queues
 		// repeat until directory queue is empty and all directory threads are waiting
 
-		char* dir = dequeue(dirQ);
+		char* dir = dir_dequeue(args->dirQ);
 
 		DIR* directory_p = opendir(dir);
 		struct dirent* directory_entry_p;
 		while ((directory_entry_p = readdir(directory_p))) 
 		{
-			//puts directory_entry -> directory_name
 			char* de = directory_entry_p->d_name;
-			if (!((strcmp(de, ".") == 0) || (strcmp(de, "..") == 0))) 
-			{
-				// printf("\n%s\n", de);
-				char dest[100];
-				strcpy(dest, argv[0]);
-				strcat(dest, "/");
-				strcat(dest, de);
-
-				printf("\n%s\n", dest);
-
-				struct stat data;
-				if (stat(de, &data) == 0)
-				{
-					if (S_ISDIR(data.st_mode))
-					{
-						enqueue(dirQ, dest);
-						// printf("enqueued dir");
-					}
-					else if (S_ISREG(data.st_mode))
-					{
-						enqueue(fileQ, dest);
-						// printf("enqueued file");
+			char dir_de[100] = "";
+			snprintf(dir_de, sizeof(dir_de), "%s/%s", dir, de);
+			if (!((strcmp(de, ".") == 0) || (strcmp(de, "..") == 0))) {
+				if (is_directory(dir_de) == 1) {
+					enqueue(args->dirQ, dir_de);
+					// queue_print(args->dirQ);
+					// queue_print(args->fileQ);
+				}
+				else if (is_directory(dir_de) == 0) {
+					if (valid_suffix(de) == 1) {
+						// printf("\n%s\n", de);
+						enqueue(args->fileQ, dir_de);
+						// queue_print(args->fileQ);
 					}
 				}
-				
-				queue_print(dirQ);
-				queue_print(fileQ);
-				
 			}
 		}
-
+		free(dir);
+		free(directory_p);
 	}
-
-	
-
-
-
+	return NULL;	
 }
 
-void fileThread(Queue *fileQ) {
+void *fileThread(void *A) {
 	// file thread
     // loop
     //     read file name from file queue
@@ -551,12 +596,14 @@ void fileThread(Queue *fileQ) {
     //     compute WFD
     //     add to WFD repository
     // repeat until the queue is empty and the directory threads have stopped
-	
-	while (fileQ->count != 0) {
+		
+	targs *args = A;
+
+	while (args->fileQ->count != 0) {
 		front = NULL;
 		numWords = 0;
 
-		char* name = dequeue(fileQ);
+		char* name = file_dequeue(args->fileQ);
 		int size = strlen(name);
 		char* fileName = malloc((size+1)*sizeof(char));
 		strcpy(fileName, name);
@@ -580,9 +627,8 @@ void fileThread(Queue *fileQ) {
 		r_Node->numWords = numWords;
 		r_Node->WFD = front;
 		r_Node->next = NULL;
-
 	}
-	
+	return NULL;
 }
 
 int main(int argc, char **argv)
@@ -603,39 +649,47 @@ int main(int argc, char **argv)
 	process_arguments(argc, argv, &dirQueue, &fileQueue);
 	print_optional_arguments();
 
-	// pthread_t tid;
-	// for (int i = 0; i < directory_threads; i++) 
-	// {
-	// 	pthread_create(&tid, NULL, );
-	// 	// dequeues dir
-	// 	// read thru dir listing
-	// 	// each dir entry enqueued
-	// 	// files with suffix enqueued
-	// }
-	// for (int i = 0; i < file_threads; i++) 
-	// {
-	// 	pthread_create(&tid, NULL, );
-	// }
+	int totalThreads = directory_threads + file_threads;
+	pthread_t *tid = malloc(totalThreads * sizeof(pthread_t));
+	targs *args = malloc(totalThreads * sizeof(targs));
+
+	int i = 0;
+	for (i = 0; i < directory_threads; i++) 
+	{
+		args[i].dirQ = &dirQueue;
+		args[i].fileQ = &fileQueue;
+		args[i].dirQ->activeThreads = directory_threads;
+		// args[i].dirQ->activeThreads = 0;
+		pthread_create(&tid[i], NULL, dirThread, &args[i]);
+	}
+
+
+	// sleep(1);
+
+
+	for (; i < totalThreads; i++) 
+	{
+		args[i].fileQ = &fileQueue;
+		pthread_create(&tid[i], NULL, fileThread, &args[i]);
+	}
+
+
+	// sleep(1);
 	
-	// for (int i = 0; i < directory_threads; i++) 
-	// {
-	// 	pthread_join(&tid, NULL);
-	// }
-	// for (int i = 0; i < file_threads; i++) 
-	// {
-	// 	pthread_join(&tid, NULL);
-	// }
-
-
-	// dirThread(&dirQueue, &fileQueue, argv);
-	fileThread(&fileQueue);
-
 	
-	printList(repoHead);
-	cleanUp(repoHead);
+	for (i = 0; i < totalThreads; i++) 
+	{
+		pthread_join(tid[i], NULL);
+	}
+
 
 
 	// queue_print(&dirQueue);
 	// queue_print(&fileQueue);
-       
+	
+	printList(repoHead);
+	free(tid);
+	free(args);
+	cleanUp(repoHead);
+	return 0;
 }
