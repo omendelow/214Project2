@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <sys/types.h>
+#include <math.h>
 
 typedef struct Node
 {
@@ -235,6 +236,16 @@ void cleanUp(repoNode *head) {
     }
 	front = NULL;
 	repoHead = NULL;
+}
+
+void cleanUpWFD(Node *head) {
+    Node* curr = head;
+	while (curr != NULL) {
+		Node* temp = curr;
+		curr = curr->next;
+		free(temp->word);
+		free(temp);
+	}
 }
 
 typedef struct QNode 
@@ -585,14 +596,66 @@ void fileThread(Queue *fileQ) {
 	
 }
 
-void print_list(Node *head)
+double get_kld(repoNode *repo, Node* node)
+{
+	printf("FILE: %s\n", repo->filename);
+	double sum = 0;
+	Node* curr_repo = repo->WFD;
+	Node* curr_node = node;
+	while (curr_repo != NULL)
+	{
+		printf("%s vs %s\n", curr_repo->word, curr_node->word);
+		if (curr_node == NULL) break;
+		int compare = strcmp(curr_repo->word, curr_node->word);
+		if (compare == 0)
+		{
+			
+			sum += curr_repo->frequency * (log(curr_repo->frequency/curr_node->frequency)/log(2));
+			curr_repo = curr_repo->next;
+			curr_node = curr_node->next;
+		}
+		else if (compare < 0)
+		{
+			curr_repo = curr_repo->next;
+		}
+		else
+		{
+			curr_node = curr_node->next;
+		}
+		printf("kld- %f\n", sum);
+	}
+	return sum;
+}
+
+void print_jsd(repoNode* one, repoNode* two, Node* avg)
+{
+	double kld_one = get_kld(one, avg);
+	double kld_two = get_kld(two, avg);
+	printf("KLD ONE: %f\n", kld_one);
+	printf("KLD TWO: %f\n", kld_two);
+	double jsd = sqrt(0.5 * (kld_one + kld_two));
+	printf("JSD: %f\n", jsd);
+}
+
+void print_list(Node *head, int counter)
 {
 	Node *curr = head;
-	while (curr != NULL) {
-    	printf("%s, %d, %f-> \n", curr->word, curr->count, curr->frequency);
+	printf("COUNTER %d\n", counter);
+	for (int i = 0; i < counter; i++)
+	{
+    	printf("%s, %d, %f-> ", curr->word, curr->count, curr->frequency);
     	curr = curr->next;
 	}
 	printf("\n");
+}
+
+void build_node(Node* node, char*word, int count, int total_num_word)
+{
+	int size = strlen(word);
+	node->word = malloc((size+1)*sizeof(char));
+	strcpy(node->word, word);
+	node->count = count;
+	node->frequency = (double) count / total_num_word;
 }
 
 void comparison_avg(repoNode *one, repoNode *two)
@@ -601,6 +664,7 @@ void comparison_avg(repoNode *one, repoNode *two)
 	Node *curr_node = head;
 	Node* new = NULL;
 	int total_num_word = one->numWords + two->numWords;
+	int counter = total_num_word;
 	printf("total_num_word: %d\n", total_num_word);
 	Node* one_WFD = one->WFD;
 	Node* two_WFD = two->WFD;
@@ -608,22 +672,12 @@ void comparison_avg(repoNode *one, repoNode *two)
 	{
 		if (one_WFD == NULL)
 		{
-			int size = strlen(two_WFD->word);
-			curr_node->word = malloc((size+1)*sizeof(char));
-			strcpy(curr_node->word, two_WFD->word);
-			curr_node->count = two_WFD->count;
-			curr_node->count = two_WFD->count;
-			curr_node->frequency = (double) curr_node->count / total_num_word;
+			build_node(curr_node, two_WFD->word, two_WFD->count, total_num_word);
 			two_WFD = two_WFD->next;
 		}
 		else if (two_WFD == NULL)
 		{
-			int size = strlen(one_WFD->word);
-			curr_node->word = malloc((size+1)*sizeof(char));
-			strcpy(curr_node->word, one_WFD->word);
-			curr_node->count = one_WFD->count;
-			curr_node->count = one_WFD->count;
-			curr_node->frequency = (double) curr_node->count / total_num_word;
+			build_node(curr_node, one_WFD->word, one_WFD->count, total_num_word);
 			one_WFD = one_WFD->next;
 		}
 		else
@@ -631,40 +685,29 @@ void comparison_avg(repoNode *one, repoNode *two)
 			int one_vs_two = strcmp(one_WFD->word, two_WFD->word);
 			if (one_vs_two == 0)
 			{
-				int size = strlen(one_WFD->word);
-				curr_node->word = malloc((size+1)*sizeof(char));
-				strcpy(curr_node->word, one_WFD->word);
-				curr_node->count = one_WFD->count + two_WFD->count;
-				curr_node->frequency = (double) curr_node->count / total_num_word;
+				build_node(curr_node, one_WFD->word, (one_WFD->count+two_WFD->count), total_num_word);
 				one_WFD = one_WFD->next;
 				two_WFD = two_WFD->next;
 			}
 			else if (one_vs_two > 0)
 			{
-				int size = strlen(two_WFD->word);
-				curr_node->word = malloc((size+1)*sizeof(char));
-				strcpy(curr_node->word, two_WFD->word);
-				curr_node->count = two_WFD->count;
-				curr_node->frequency = (double) curr_node->count / total_num_word;
+				build_node(curr_node, two_WFD->word, two_WFD->count, total_num_word);
 				two_WFD = two_WFD->next;
 			}
 			else
 			{
-				int size = strlen(one_WFD->word);
-				curr_node->word = malloc((size+1)*sizeof(char));
-				strcpy(curr_node->word, one_WFD->word);
-				curr_node->count = one_WFD->count;
-				curr_node->frequency = (double) curr_node->count / total_num_word;
+				build_node(curr_node, one_WFD->word, one_WFD->count, total_num_word);
 				one_WFD = one_WFD->next;
 			}
 		}
+		counter -= curr_node->count-1;
 		new = malloc(sizeof(Node));
 		curr_node->next = new;
 		curr_node = new;
 	}
-	curr_node = NULL;
-	printf("1hi\n");
-	print_list(head);
+	print_list(head, counter);
+	print_jsd(one, two, head);
+	//cleanUpWFD(head);
 }
 
 void print_file_pairs(repoNode * head)
