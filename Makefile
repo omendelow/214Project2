@@ -8,10 +8,10 @@ WFD.o: WFD.c
 	$(CC) -c $(CFLAGS) WFD.c
 
 newCompare: newCompare.o
-	$(CC) $(CFLAGS) -o $@ $^
+	$(CC) $(CFLAGS) -o $@ $^ -lm
 
 newCompare.o: newCompare.c
-	$(CC) -c $(CFLAGS) newCompare.c
+	$(CC) -c $(CFLAGS) newCompare.c -lm
 
 JSD: JSD.o
 	$(CC) $(CFLAGS) -o $@ $^ -lm

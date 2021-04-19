@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <pthread.h>
 #include <sys/types.h>
+#include <math.h>
 
 typedef struct Node
 {
@@ -237,6 +238,17 @@ void cleanUp(repoNode *head) {
 	repoHead = NULL;
 }
 
+void cleanUpWFD(Node *head) {
+    Node* curr = head;
+	while (curr != NULL)
+	{
+		Node* temp = curr;
+		curr = curr->next;
+		free(temp->word);
+		free(temp);
+	}
+}
+
 typedef struct QNode 
 {
     char* data;
@@ -264,6 +276,15 @@ int queue_init(Queue *Q)
     // pthread_cond_init(&Q->write_ready, NULL);
     
     return err;  // obtained from the init functions (code omitted)
+}
+
+int destroy(Queue *Q)
+{
+	pthread_mutex_destroy(&Q->lock);
+	pthread_cond_destroy(&Q->read_ready);
+	// pthread_cond_destroy(&Q->write_ready);
+
+	return 0;
 }
 
 int enqueue(Queue *Q, char* item)
@@ -627,6 +648,141 @@ void *fileThread(void *A) {
 	return NULL;
 }
 
+double get_kld(repoNode *repo, Node* node)
+{
+	printf("FILE: %s\n", repo->filename);
+	double sum = 0;
+	Node* curr_repo = repo->WFD;
+	Node* curr_node = node;
+	while (curr_repo != NULL)
+	{
+		printf("%s vs %s\n", curr_repo->word, curr_node->word);
+		if (curr_node == NULL) break;
+		int compare = strcmp(curr_repo->word, curr_node->word);
+		if (compare == 0)
+		{
+			
+			sum += curr_repo->frequency * (log(curr_repo->frequency/curr_node->frequency)/log(2));
+			curr_repo = curr_repo->next;
+			curr_node = curr_node->next;
+		}
+		else if (compare < 0)
+		{
+			curr_repo = curr_repo->next;
+		}
+		else
+		{
+			curr_node = curr_node->next;
+		}
+		printf("kld- %f\n", sum);
+	}
+	return sum;
+}
+
+void print_jsd(repoNode* one, repoNode* two, Node* avg)
+{
+	double kld_one = get_kld(one, avg);
+	double kld_two = get_kld(two, avg);
+	printf("KLD ONE: %f\n", kld_one);
+	printf("KLD TWO: %f\n", kld_two);
+	double jsd = sqrt(0.5 * (kld_one + kld_two));
+	printf("JSD: %f\n", jsd);
+}
+
+void print_list(Node *head, int counter)
+{
+	Node *curr = head;
+	printf("COUNTER %d\n", counter);
+	for (int i = 0; i < counter; i++)
+	{
+    	printf("%s, %d, %f-> ", curr->word, curr->count, curr->frequency);
+    	curr = curr->next;
+	}
+	printf("\n");
+}
+
+void build_node(Node* node, char* word, int count, int total_num_word)
+{
+	int size = strlen(word);
+	node->word = malloc((size+1)*sizeof(char));
+	strcpy(node->word, word);
+	node->count = count;
+	node->frequency = (double) count / total_num_word;
+}
+
+void comparison_avg(repoNode *one, repoNode *two)
+{
+	Node *head = malloc(sizeof(Node));
+	head->next = NULL;
+	Node *curr_node = head;
+	Node *new = NULL;
+	int total_num_word = one->numWords + two->numWords;
+	int counter = total_num_word;
+	printf("total_num_word: %d\n", total_num_word);
+	Node* one_WFD = one->WFD;
+	Node* two_WFD = two->WFD;
+	while (one_WFD != NULL || two_WFD != NULL)
+	{
+		if (one_WFD == NULL)
+		{
+			build_node(curr_node, two_WFD->word, two_WFD->count, total_num_word);
+			two_WFD = two_WFD->next;
+		}
+		else if (two_WFD == NULL)
+		{
+			build_node(curr_node, one_WFD->word, one_WFD->count, total_num_word);
+			one_WFD = one_WFD->next;
+		}
+		else
+		{
+			int one_vs_two = strcmp(one_WFD->word, two_WFD->word);
+			if (one_vs_two == 0)
+			{
+				build_node(curr_node, one_WFD->word, (one_WFD->count+two_WFD->count), total_num_word);
+				one_WFD = one_WFD->next;
+				two_WFD = two_WFD->next;
+			}
+			else if (one_vs_two > 0)
+			{
+				build_node(curr_node, two_WFD->word, two_WFD->count, total_num_word);
+				two_WFD = two_WFD->next;
+			}
+			else
+			{
+				build_node(curr_node, one_WFD->word, one_WFD->count, total_num_word);
+				one_WFD = one_WFD->next;
+			}
+		}
+		counter -= curr_node->count-1;
+		new = malloc(sizeof(Node));
+		new->word = NULL;
+		new->next = NULL;
+		curr_node->next = new;
+		curr_node = new;
+	}
+	print_list(head, counter);
+	print_jsd(one, two, head);
+	cleanUpWFD(head);
+}
+
+void print_file_pairs(repoNode * head)
+{
+	int pair_counter = 0;
+	repoNode *next_file;
+	while (head != NULL)
+	{
+		next_file = head->next;
+		while (next_file != NULL)
+		{
+			printf("%d: %s vs %s\n", pair_counter, head->filename, next_file->filename);
+			comparison_avg(head, next_file);
+			next_file = next_file->next;
+			pair_counter++;
+		}
+		head = head->next;	
+	}
+}
+
 int main(int argc, char **argv)
 {
 	// Check number of arguments passed
@@ -660,7 +816,7 @@ int main(int argc, char **argv)
 	}
 
 
-	// sleep(1);
+	sleep(1);
 
 
 	for (; i < totalThreads; i++) 
@@ -676,12 +832,14 @@ int main(int argc, char **argv)
 		pthread_join(tid[i], NULL);
 	}
 
-
-
-	// queue_print(&dirQueue);
-	// queue_print(&fileQueue);
 	
+
+	destroy(&dirQueue);
+	destroy(&fileQueue);
+
 	printList(repoHead);
+	print_file_pairs(repoHead);
+
 	free(tid);
 	free(args);
 	cleanUp(repoHead);
