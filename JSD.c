@@ -257,9 +257,10 @@ typedef struct QNode
   
 typedef struct Queue 
 {
-    QNode *head;  // index of first item in Queue
-    QNode *rear;
+    QNode *head;  // first item in Queue
+    QNode *rear;  // last item in Queue
     int count;  // number of items in Queue
+	int activeThreads; // number of active Threads
     pthread_mutex_t lock;
     pthread_cond_t read_ready;  // wait for count > 0
     // pthread_cond_t write_ready; // wait for count < QUEUESIZE
@@ -275,6 +276,15 @@ int queue_init(Queue *Q)
     // pthread_cond_init(&Q->write_ready, NULL);
     
     return err;  // obtained from the init functions (code omitted)
+}
+
+int destroy(Queue *Q)
+{
+	pthread_mutex_destroy(&Q->lock);
+	pthread_cond_destroy(&Q->read_ready);
+	// pthread_cond_destroy(&Q->write_ready);
+
+	return 0;
 }
 
 int enqueue(Queue *Q, char* item)
@@ -305,13 +315,52 @@ int enqueue(Queue *Q, char* item)
     }
     Q->count++;
     
+	pthread_cond_signal(&Q->read_ready); // wake up a thread waiting to read (if any)
     pthread_mutex_unlock(&Q->lock); // now we're done
-    pthread_cond_signal(&Q->read_ready); // wake up a thread waiting to read (if any)
 
     return 0;
 }
 
-char* dequeue(Queue *Q)
+char* dir_dequeue(Queue *Q)
+{
+    pthread_mutex_lock(&Q->lock);
+    
+	printf("\nQueue Count: %d ActiveThreads: %d\n", Q->count, Q->activeThreads);
+	if (Q->count == 0) {
+		Q->activeThreads--;
+		if (Q->activeThreads == 0) {
+    		pthread_mutex_unlock(&Q->lock);
+			pthread_cond_broadcast(&Q->read_ready);
+			return NULL;
+		}
+		while (Q->count == 0 && Q->activeThreads > 0) {
+			pthread_cond_wait(&Q->read_ready, &Q->lock);
+		}
+		if (Q->count == 0) {
+			pthread_mutex_unlock(&Q->lock);
+			return NULL;
+		}
+		Q->activeThreads++;
+	}
+	
+    // now we have exclusive access and Queue is non-empty
+    
+    QNode *temp = Q->head;
+	int size = strlen(temp->data);
+	char* item = malloc((size+1)*sizeof(char));
+	strcpy(item, temp->data);
+    Q->head = Q->head->next;
+    free(temp->data);
+    free(temp);
+    Q->count--;
+
+    pthread_mutex_unlock(&Q->lock);
+    
+    return item;
+    // return pthread_cond_signal(&Q->write_ready);
+}
+
+char* file_dequeue(Queue *Q)
 {
     pthread_mutex_lock(&Q->lock);
     
@@ -358,6 +407,17 @@ int valid_suffix(char* file_path)
 {
 	int suffix_length = strlen(file_name_suffix);
 	int file_path_index = strlen(file_path) - 1;
+
+	if (suffix_length == 0) {
+		if (file_path[0] != '.') {
+			return 1;
+		}
+		else
+		{
+			return 0;
+		}
+	}
+
 	//file_path must have at least one character and then a . before suffix
 	if (file_path_index - 1 < suffix_length)
 	{
@@ -370,6 +430,8 @@ int valid_suffix(char* file_path)
 		{
 			return 0;
 		}
+		suffix_index--;
+		file_path_index--;
 	}
 	return 1;
 }
@@ -497,63 +559,54 @@ int process_arguments(int argc, char **argv, Queue *dirQueue, Queue *fileQueue)
 	return 0;
 }
 
-void dirThread(Queue *dirQ, Queue *fileQ, char **argv) 
+typedef struct targs {
+	Queue *dirQ;
+	Queue *fileQ;
+}targs;
+
+void *dirThread(void *A) 
 {
+	targs *args = A;
+
 	//while directory queue is not empty
-	while (dirQ->count != 0) 
+	while (args->dirQ->count != 0) 
 	{
 		// read directory name from queue
 		// open directory
 		//     add entries to file or directory queues
 		// repeat until directory queue is empty and all directory threads are waiting
 
-		char* dir = dequeue(dirQ);
+		char* dir = dir_dequeue(args->dirQ);
 
 		DIR* directory_p = opendir(dir);
 		struct dirent* directory_entry_p;
 		while ((directory_entry_p = readdir(directory_p))) 
 		{
-			//puts directory_entry -> directory_name
 			char* de = directory_entry_p->d_name;
-			if (!((strcmp(de, ".") == 0) || (strcmp(de, "..") == 0))) 
-			{
-				// printf("\n%s\n", de);
-				char dest[100];
-				strcpy(dest, argv[0]);
-				strcat(dest, "/");
-				strcat(dest, de);
-
-				printf("\n%s\n", dest);
-
-				struct stat data;
-				if (stat(de, &data) == 0)
-				{
-					if (S_ISDIR(data.st_mode))
-					{
-						enqueue(dirQ, dest);
-						// printf("enqueued dir");
-					}
-					else if (S_ISREG(data.st_mode))
-					{
-						enqueue(fileQ, dest);
-						// printf("enqueued file");
+			char dir_de[100] = "";
+			snprintf(dir_de, sizeof(dir_de), "%s/%s", dir, de);
+			if (!((strcmp(de, ".") == 0) || (strcmp(de, "..") == 0))) {
+				if (is_directory(dir_de) == 1) {
+					enqueue(args->dirQ, dir_de);
+					// queue_print(args->dirQ);
+					// queue_print(args->fileQ);
+				}
+				else if (is_directory(dir_de) == 0) {
+					if (valid_suffix(de) == 1) {
+						// printf("\n%s\n", de);
+						enqueue(args->fileQ, dir_de);
+						// queue_print(args->fileQ);
 					}
 				}
-				
-				queue_print(dirQ);
-				queue_print(fileQ);
-				
 			}
 		}
-
+		free(dir);
+		free(directory_p);
 	}
-
-	
-
-
+	return NULL;	
 }
 
-void fileThread(Queue *fileQ) {
+void *fileThread(void *A) {
 	// file thread
     // loop
     //     read file name from file queue
@@ -562,12 +615,14 @@ void fileThread(Queue *fileQ) {
     //     compute WFD
     //     add to WFD repository
     // repeat until the queue is empty and the directory threads have stopped
-	
-	while (fileQ->count != 0) {
+		
+	targs *args = A;
+
+	while (args->fileQ->count != 0) {
 		front = NULL;
 		numWords = 0;
 
-		char* name = dequeue(fileQ);
+		char* name = file_dequeue(args->fileQ);
 		int size = strlen(name);
 		char* fileName = malloc((size+1)*sizeof(char));
 		strcpy(fileName, name);
@@ -591,62 +646,58 @@ void fileThread(Queue *fileQ) {
 		r_Node->numWords = numWords;
 		r_Node->WFD = front;
 		r_Node->next = NULL;
-
 	}
-	
+	return NULL;
 }
+
+struct comp_result
+{
+	char *file1, *file2;
+	unsigned tokens; // word count of file 1 + file 2
+	double distance; // JSD between file 1 and file 2
+};
 
 double get_kld(repoNode *repo, Node* node)
 {
-	printf("FILE: %s\n", repo->filename);
+	//printf("FILE: %s\n", repo->filename);
 	double sum = 0;
-	Node* curr_repo = repo->WFD;
+	Node* curr_fp = repo->WFD;
 	Node* curr_node = node;
-	while (curr_repo != NULL)
+	while (curr_fp != NULL)
 	{
-		printf("%s vs %s\n", curr_repo->word, curr_node->word);
+		//printf("%s vs %s\n", curr_fp->word, curr_node->word);
 		if (curr_node == NULL) break;
-		int compare = strcmp(curr_repo->word, curr_node->word);
+		int compare = strcmp(curr_fp->word, curr_node->word);
 		if (compare == 0)
 		{
-			
-			sum += curr_repo->frequency * (log(curr_repo->frequency/curr_node->frequency)/log(2));
-			curr_repo = curr_repo->next;
+			//printf("%f * log2(%f / %f) = %f * %f = %f\n", curr_fp->frequency, curr_fp->frequency, curr_node->frequency, curr_fp->frequency, (log(curr_fp->frequency/curr_node->frequency)/log(2)), (curr_fp->frequency * (log(curr_fp->frequency/curr_node->frequency)/log(2))));
+			sum += curr_fp->frequency * (log(curr_fp->frequency/curr_node->frequency)/log(2));
+			curr_fp = curr_fp->next;
 			curr_node = curr_node->next;
 		}
 		else if (compare < 0)
 		{
-			curr_repo = curr_repo->next;
+			curr_fp = curr_fp->next;
 		}
 		else
 		{
 			curr_node = curr_node->next;
 		}
-		printf("kld- %f\n", sum);
+		//printf("kld- %f\n", sum);
 	}
+	//printf("sum- %f\n", sum);
 	return sum;
 }
 
-void print_jsd(repoNode* one, repoNode* two, Node* avg)
+double get_jsd(repoNode* one, repoNode* two, Node* avg)
 {
 	double kld_one = get_kld(one, avg);
 	double kld_two = get_kld(two, avg);
-	printf("KLD ONE: %f\n", kld_one);
-	printf("KLD TWO: %f\n", kld_two);
+	//printf("KLD ONE: %f\n", kld_one);
+	//printf("KLD TWO: %f\n", kld_two);
 	double jsd = sqrt(0.5 * (kld_one + kld_two));
-	printf("JSD: %f\n", jsd);
-}
-
-void print_list(Node *head, int counter)
-{
-	Node *curr = head;
-	printf("COUNTER %d\n", counter);
-	for (int i = 0; i < counter; i++)
-	{
-    	printf("%s, %d, %f-> ", curr->word, curr->count, curr->frequency);
-    	curr = curr->next;
-	}
-	printf("\n");
+	//printf("jsd- %f\n", jsd);
+	return jsd;
 }
 
 void build_node(Node* node, char* word, int count, int total_num_word)
@@ -658,7 +709,7 @@ void build_node(Node* node, char* word, int count, int total_num_word)
 	node->frequency = (double) count / total_num_word;
 }
 
-void comparison_avg(repoNode *one, repoNode *two)
+double comparison_avg(repoNode *one, repoNode *two)
 {
 	Node *head = malloc(sizeof(Node));
 	head->next = NULL;
@@ -666,7 +717,7 @@ void comparison_avg(repoNode *one, repoNode *two)
 	Node *new = NULL;
 	int total_num_word = one->numWords + two->numWords;
 	int counter = total_num_word;
-	printf("total_num_word: %d\n", total_num_word);
+	//printf("total_num_word: %d\n", total_num_word);
 	Node* one_WFD = one->WFD;
 	Node* two_WFD = two->WFD;
 	while (one_WFD != NULL || two_WFD != NULL)
@@ -708,9 +759,10 @@ void comparison_avg(repoNode *one, repoNode *two)
 		curr_node->next = new;
 		curr_node = new;
 	}
-	print_list(head, counter);
-	print_jsd(one, two, head);
+	//print_list(head, counter);
+	double to_return =  get_jsd(one, two, head);
 	cleanUpWFD(head);
+	return to_return;
 }
 
 void print_file_pairs(repoNode * head)
@@ -722,13 +774,31 @@ void print_file_pairs(repoNode * head)
 		next_file = head->next;
 		while (next_file != NULL)
 		{
-			printf("%d: %s vs %s\n", pair_counter, head->filename, next_file->filename);
+			printf("\n%d: %s vs %s\n", pair_counter, head->filename, next_file->filename);
 			comparison_avg(head, next_file);
 			next_file = next_file->next;
 			pair_counter++;
 		}
 		head = head->next;	
 	}
+}
+
+double compute_jsd(repoNode *f1, repoNode *f2)
+{
+	double distance = 0;
+	distance = comparison_avg(f1, f2);
+	return distance;
+}
+
+static int sort_comps(const void *r1, const void *r2)
+{
+	int comp = ((struct comp_result*) r1)->distance - ((struct comp_result*)r2)->distance;
+	return comp;
+}
+
+void print_result(struct comp_result *result)
+{
+	printf("%f %s %s\n", result->distance, result->file1, result->file2);
 }
 
 int main(int argc, char **argv)
@@ -749,41 +819,77 @@ int main(int argc, char **argv)
 	process_arguments(argc, argv, &dirQueue, &fileQueue);
 	print_optional_arguments();
 
-	// pthread_t tid;
-	// for (int i = 0; i < directory_threads; i++) 
-	// {
-	// 	pthread_create(&tid, NULL, );
-	// 	// dequeues dir
-	// 	// read thru dir listing
-	// 	// each dir entry enqueued
-	// 	// files with suffix enqueued
-	// }
-	// for (int i = 0; i < file_threads; i++) 
-	// {
-	// 	pthread_create(&tid, NULL, );
-	// }
+	int totalThreads = directory_threads + file_threads;
+	pthread_t *tid = malloc(totalThreads * sizeof(pthread_t));
+	targs *args = malloc(totalThreads * sizeof(targs));
+
+	int i = 0;
+	for (i = 0; i < directory_threads; i++) 
+	{
+		args[i].dirQ = &dirQueue;
+		args[i].fileQ = &fileQueue;
+		args[i].dirQ->activeThreads = directory_threads;
+		// args[i].dirQ->activeThreads = 0;
+		pthread_create(&tid[i], NULL, dirThread, &args[i]);
+	}
+
+
+	sleep(1);
+
+
+	for (; i < totalThreads; i++) 
+	{
+		args[i].fileQ = &fileQueue;
+		pthread_create(&tid[i], NULL, fileThread, &args[i]);
+	}
 	
-	// for (int i = 0; i < directory_threads; i++) 
-	// {
-	// 	pthread_join(&tid, NULL);
-	// }
-	// for (int i = 0; i < file_threads; i++) 
-	// {
-	// 	pthread_join(&tid, NULL);
-	// }
-
-
-	// dirThread(&dirQueue, &fileQueue, argv);
-	fileThread(&fileQueue);
 
 	
+	for (i = 0; i < totalThreads; i++) 
+	{
+		pthread_join(tid[i], NULL);
+	}
+
+	//updated JSD methods
+	unsigned num_files = repoHead->WFD->count;
+	unsigned comparisons = num_files * (num_files - 1) / 2;
+	struct comp_result *results = malloc(comparisons * sizeof(struct comp_result));
+	i = 0;
+	repoNode *f1 = repoHead;
+	repoNode *f2;
+	while (f1 != NULL)
+	{
+		f2 = f1->next;
+		while (f2 != NULL)
+		{
+			int num_thread = i % analysis_threads;
+			printf("\n[%d]%d: %s vs %s\n", num_thread, i, f1->filename, f2->filename);
+			results[i].file1 = f1->filename;
+			results[i].file2 = f2->filename;
+			results[i].tokens = f1->numWords + f2->numWords;
+			results[i].distance = compute_jsd(f1, f2);
+			f2 = f2->next;
+			i++;
+		}
+		f1 = f1->next;	
+	}
+
+	qsort(results, comparisons, sizeof(struct comp_result), sort_comps);
+
+	for (i = 0; i < comparisons; i++)
+	{
+		print_result(&results[i]);
+	}
+
+	destroy(&dirQueue);
+	destroy(&fileQueue);
+
 	printList(repoHead);
 	print_file_pairs(repoHead);
 
+	free(tid);
+	free(args);
+	free(results);
 	cleanUp(repoHead);
-
-
-	// queue_print(&dirQueue);
-	// queue_print(&fileQueue);
-       
+	return 0;
 }
