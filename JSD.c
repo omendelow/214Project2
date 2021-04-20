@@ -419,15 +419,14 @@ char* file_name_suffix = ".txt";
 int valid_suffix(char* file_path)
 {
 	int suffix_length = strlen(file_name_suffix);
+	// printf("%d\n", suffix_length);
 	int file_path_index = strlen(file_path) - 1;
 
 	if (suffix_length == 0) {
-		if (file_path[0] != '.') {
-			return 1;
-		}
-		else
-		{
-			return 0;
+		for (int i = 0; i < strlen(file_path); i++) {
+			if (file_path[i] == '.') {
+				return 0;
+			}
 		}
 	}
 
@@ -575,9 +574,14 @@ int process_arguments(int argc, char **argv, Queue *dirQueue, Queue *fileQueue)
 typedef struct targs {
 	Queue *dirQ;
 	Queue *fileQ;
-	int id;
 	Node *front;
 }targs;
+
+typedef struct zargs {
+	unsigned comparisons;
+	int thread_number;
+	struct comp_result *results;
+}zargs;
 
 int get_queue_count(char* queuetype, Queue *Q)
 {
@@ -663,7 +667,6 @@ void *fileThread(void *A) {
 		strcpy(fileName, name);
 		free(name);
 		int fd = open(fileName, O_RDONLY);
-		printf("Thread: %d\n", args->id);
 		args->front = getWords(fd, args->front);
 		numWords = getFrequencies(args->front);
 
@@ -688,6 +691,7 @@ void *fileThread(void *A) {
 
 struct comp_result
 {
+	repoNode *f1, *f2;
 	char *file1, *file2;
 	unsigned tokens; // word count of file 1 + file 2
 	double distance; // JSD between file 1 and file 2
@@ -845,6 +849,22 @@ unsigned get_num_files(repoNode* head)
 	return counter;
 }
 
+void *analysisThread(void *A) {
+
+	zargs *args2 = A;
+
+	int i = args2->thread_number;
+	int comparisons = args2->comparisons;
+	struct comp_result *results = args2->results;
+
+	while (i < comparisons)
+	{
+		results[i].distance = compute_jsd(results[i].f1, results[i].f2);
+		i += analysis_threads;
+	}
+	return NULL;
+}
+
 int main(int argc, char **argv)
 {
 	// Check number of arguments passed
@@ -865,7 +885,8 @@ int main(int argc, char **argv)
 
 	Node **front = malloc(file_threads * sizeof(Node*));
 	
-	int totalThreads = directory_threads + file_threads;
+	int collection_threads = directory_threads + file_threads;
+	int totalThreads = collection_threads + analysis_threads;
 	pthread_t *tid = malloc(totalThreads * sizeof(pthread_t));
 	targs *args = malloc(totalThreads * sizeof(targs));
 
@@ -881,15 +902,14 @@ int main(int argc, char **argv)
 
 	//sleep(1);
 	int id = 0;
-	for (; i < totalThreads; i++) 
+	for (; i < collection_threads; i++) 
 	{
 		args[i].fileQ = &fileQueue;
-		args[i].id = id;
 		args[i].front = front[id++];
 		pthread_create(&tid[i], NULL, fileThread, &args[i]);
 	}
 	
-	for (i = 0; i < totalThreads; i++) 
+	for (i = 0; i < collection_threads; i++) 
 	{
 		pthread_join(tid[i], NULL);
 	}
@@ -908,16 +928,30 @@ int main(int argc, char **argv)
 		f2 = f1->next;
 		while (f2 != NULL)
 		{
-			// int num_thread = i % analysis_threads;
-			// printf("[%d]%d: %s vs %s\n", num_thread, i, f1->filename, f2->filename);
 			results[i].file1 = f1->filename;
 			results[i].file2 = f2->filename;
+			results[i].f1 = f1;
+			results[i].f2 = f2;
 			results[i].tokens = f1->numWords + f2->numWords;
-			results[i].distance = compute_jsd(f1, f2);
 			f2 = f2->next;
 			i++;
 		}
 		f1 = f1->next;	
+	}
+
+	zargs *args2 = malloc(totalThreads * sizeof(zargs));
+
+	for (i = 0; i < analysis_threads; i++)
+	{
+		args2[i].comparisons = comparisons;
+		args2[i].thread_number = i;
+		args2[i].results = results;
+		pthread_create(&tid[i+collection_threads], NULL, analysisThread, &args2[i]);
+	}
+
+	for (i = collection_threads; i < totalThreads; i++)
+	{
+		pthread_join(tid[i], NULL);
 	}
 
 	qsort(results, comparisons, sizeof(struct comp_result), sort_comps);
@@ -931,6 +965,7 @@ int main(int argc, char **argv)
 	destroy(&dirQueue);
 	destroy(&fileQueue);
 	free(front);
+	free(args2);
 	free(tid);
 	free(args);
 	free(results);
