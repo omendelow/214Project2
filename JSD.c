@@ -801,6 +801,18 @@ void print_result(struct comp_result *result)
 	printf("%f %s %s\n", result->distance, result->file1, result->file2);
 }
 
+unsigned get_num_files(repoNode* head)
+{
+	unsigned counter = 0;	
+	repoNode* start = head;
+	while (start != NULL)
+	{
+		counter++;
+		start = start->next;
+	}
+	return counter;
+}
+
 int main(int argc, char **argv)
 {
 	// Check number of arguments passed
@@ -853,7 +865,7 @@ int main(int argc, char **argv)
 	printList(repoHead);
 
 	//updated JSD methods
-	unsigned num_files = repoHead->WFD->count;
+	unsigned num_files = get_num_files(repoHead);
 	unsigned comparisons = num_files * (num_files - 1) / 2;
 	struct comp_result *results = malloc(comparisons * sizeof(struct comp_result));
 	i = 0;
@@ -865,7 +877,7 @@ int main(int argc, char **argv)
 		while (f2 != NULL)
 		{
 			int num_thread = i % analysis_threads;
-			printf("\n[%d]%d: %s vs %s\n", num_thread, i, f1->filename, f2->filename);
+			printf("[%d]%d: %s vs %s\n", num_thread, i, f1->filename, f2->filename);
 			results[i].file1 = f1->filename;
 			results[i].file2 = f2->filename;
 			results[i].tokens = f1->numWords + f2->numWords;
@@ -877,7 +889,8 @@ int main(int argc, char **argv)
 	}
 
 	qsort(results, comparisons, sizeof(struct comp_result), sort_comps);
-
+	
+	printf("\n");
 	for (i = 0; i < comparisons; i++)
 	{
 		print_result(&results[i]);
