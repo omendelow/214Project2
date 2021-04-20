@@ -423,10 +423,12 @@ int valid_suffix(char* file_path)
 	int file_path_index = strlen(file_path) - 1;
 
 	if (suffix_length == 0) {
-		for (int i = 0; i < strlen(file_path); i++) {
-			if (file_path[i] == '.') {
-				return 0;
-			}
+		if (file_path[0] != '.') {
+			return 1;
+		}
+		else
+		{
+			return 0;
 		}
 	}
 
@@ -605,7 +607,6 @@ void *dirThread(void *A)
 		//     add entries to file or directory queues
 		// repeat until directory queue is empty and all directory threads are waiting
 
-		// printf("what\n");
 		pthread_mutex_lock(&args->fileQ->lock);
 
 		char* dir = dir_dequeue(args->dirQ);
@@ -615,9 +616,11 @@ void *dirThread(void *A)
 		while ((directory_entry_p = readdir(directory_p))) 
 		{
 			char* de = directory_entry_p->d_name;
-			char dir_de[100] = "";
-			snprintf(dir_de, sizeof(dir_de), "%s/%s", dir, de);
-			if (!((strcmp(de, ".") == 0) || (strcmp(de, "..") == 0))) {
+			char sub[2] = "";
+			strncpy(sub, de, 1);
+			if (!(strcmp(sub, ".") == 0)) {
+				char dir_de[100] = "";
+				snprintf(dir_de, sizeof(dir_de), "%s/%s", dir, de);
 				if (is_directory(dir_de) == 1) {
 					// pthread_mutex_unlock(&args->dirQ->lock);
 					enqueue(args->dirQ, dir_de);
@@ -634,7 +637,6 @@ void *dirThread(void *A)
 				}
 			}
 		}
-		// printf("hi\n");
 		pthread_mutex_unlock(&args->fileQ->lock);
 
 		free(dir);
