@@ -19,6 +19,11 @@ JSD: JSD.o
 JSD.o: JSD.c
 	$(CC) -c $(CFLAGS) JSD.c -lm -lpthread
 
+JSD2: JSD2.o
+	$(CC) $(CFLAGS) -o $@ $^ -lm -lpthread
+
+JSD2.o: JSD2.c
+	$(CC) -c $(CFLAGS) JSD2.c -lm -lpthread
 
 clean:
-	rm -f *.o WFD newCompare JSD
+	rm -f *.o WFD newCompare JSD JSD2
