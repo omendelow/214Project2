@@ -670,7 +670,7 @@ double get_kld(repoNode *repo, Node* node)
 		int compare = strcmp(curr_fp->word, curr_node->word);
 		if (compare == 0)
 		{
-			//printf("%f * log2(%f / %f) = %f * %f = %f\n", curr_fp->frequency, curr_fp->frequency, curr_node->frequency, curr_fp->frequency, (log(curr_fp->frequency/curr_node->frequency)/log(2)), (curr_fp->frequency * (log(curr_fp->frequency/curr_node->frequency)/log(2))));
+			printf("%f * log2(%f / %f) = %f * %f = %f\n", curr_fp->frequency, curr_fp->frequency, curr_node->frequency, curr_fp->frequency, (log(curr_fp->frequency/curr_node->frequency)/log(2)), (curr_fp->frequency * (log(curr_fp->frequency/curr_node->frequency)/log(2))));
 			sum += curr_fp->frequency * (log(curr_fp->frequency/curr_node->frequency)/log(2));
 			curr_fp = curr_fp->next;
 			curr_node = curr_node->next;
@@ -696,17 +696,17 @@ double get_jsd(repoNode* one, repoNode* two, Node* avg)
 	//printf("KLD ONE: %f\n", kld_one);
 	//printf("KLD TWO: %f\n", kld_two);
 	double jsd = sqrt(0.5 * (kld_one + kld_two));
-	//printf("jsd- %f\n", jsd);
+	printf("jsd- %f\n", jsd);
 	return jsd;
 }
 
-void build_node(Node* node, char* word, int count, int total_num_word)
+void build_node(Node* node, char* word, int count1, int count2)
 {
 	int size = strlen(word);
 	node->word = malloc((size+1)*sizeof(char));
 	strcpy(node->word, word);
-	node->count = count;
-	node->frequency = (double) count / total_num_word;
+	node->count = count1 + count2;
+	node->frequency = (double) node->count / 2;
 }
 
 double comparison_avg(repoNode *one, repoNode *two)
@@ -715,8 +715,6 @@ double comparison_avg(repoNode *one, repoNode *two)
 	head->next = NULL;
 	Node *curr_node = head;
 	Node *new = NULL;
-	int total_num_word = one->numWords + two->numWords;
-	int counter = total_num_word;
 	//printf("total_num_word: %d\n", total_num_word);
 	Node* one_WFD = one->WFD;
 	Node* two_WFD = two->WFD;
@@ -724,12 +722,12 @@ double comparison_avg(repoNode *one, repoNode *two)
 	{
 		if (one_WFD == NULL)
 		{
-			build_node(curr_node, two_WFD->word, two_WFD->count, total_num_word);
+			build_node(curr_node, two_WFD->word, 0, two_WFD->count);
 			two_WFD = two_WFD->next;
 		}
 		else if (two_WFD == NULL)
 		{
-			build_node(curr_node, one_WFD->word, one_WFD->count, total_num_word);
+			build_node(curr_node, one_WFD->word, one_WFD->count, 0);
 			one_WFD = one_WFD->next;
 		}
 		else
@@ -737,29 +735,27 @@ double comparison_avg(repoNode *one, repoNode *two)
 			int one_vs_two = strcmp(one_WFD->word, two_WFD->word);
 			if (one_vs_two == 0)
 			{
-				build_node(curr_node, one_WFD->word, (one_WFD->count+two_WFD->count), total_num_word);
+				build_node(curr_node, one_WFD->word, one_WFD->count ,two_WFD->count);
 				one_WFD = one_WFD->next;
 				two_WFD = two_WFD->next;
 			}
 			else if (one_vs_two > 0)
 			{
-				build_node(curr_node, two_WFD->word, two_WFD->count, total_num_word);
+				build_node(curr_node, two_WFD->word, 0, two_WFD->count);
 				two_WFD = two_WFD->next;
 			}
 			else
 			{
-				build_node(curr_node, one_WFD->word, one_WFD->count, total_num_word);
+				build_node(curr_node, one_WFD->word, one_WFD->count, 0);
 				one_WFD = one_WFD->next;
 			}
 		}
-		counter -= curr_node->count-1;
 		new = malloc(sizeof(Node));
 		new->word = NULL;
 		new->next = NULL;
 		curr_node->next = new;
 		curr_node = new;
 	}
-	//print_list(head, counter);
 	double to_return =  get_jsd(one, two, head);
 	cleanUpWFD(head);
 	return to_return;
@@ -792,7 +788,7 @@ double compute_jsd(repoNode *f1, repoNode *f2)
 
 static int sort_comps(const void *r1, const void *r2)
 {
-	int comp = ((struct comp_result*) r1)->distance - ((struct comp_result*)r2)->distance;
+	int comp = ((struct comp_result*) r1)->tokens - ((struct comp_result*)r2)->tokens;
 	return comp;
 }
 
