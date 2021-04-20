@@ -524,22 +524,13 @@ int is_argument(char* str)
 		}
 		else if (parameter == 's')
 		{
-			// file name suffix
-			if (str[2] == '.' && strlen(str) > 3)
+			int suffix_length = strlen(str) - 1;
+			char *suffix = malloc(sizeof(char) * suffix_length);
+			for (int i = 0; i < suffix_length; i++) 
 			{
-				int suffix_length = strlen(str) - 1;
-				char *suffix = malloc(sizeof(char) * suffix_length);
-				for (int i = 0; i < suffix_length; i++) 
-				{
-					suffix[i] = str[i+2];
-				}
-				file_name_suffix = suffix;
+				suffix[i] = str[i+2];
 			}
-			else
-			{
-				// invalid argument
-				return 2;
-			}
+			file_name_suffix = suffix;
 		}
 		else
 		{
