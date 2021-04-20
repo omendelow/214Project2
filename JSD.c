@@ -325,7 +325,7 @@ char* dir_dequeue(Queue *Q)
 {
     pthread_mutex_lock(&Q->lock);
     
-	printf("\nQueue Count: %d ActiveThreads: %d\n", Q->count, Q->activeThreads);
+	// printf("\nQueue Count: %d ActiveThreads: %d\n", Q->count, Q->activeThreads);
 	if (Q->count == 0) {
 		Q->activeThreads--;
 		if (Q->activeThreads == 0) {
@@ -570,7 +570,7 @@ int get_queue_count(char* queuetype, Queue *Q)
 	pthread_mutex_lock(&Q->lock);
 	count = Q->count;
 	pthread_mutex_unlock(&Q->lock);
-	printf("%s Queue count: %d\n", queuetype, count);
+	// printf("%s Queue count: %d\n", queuetype, count);
 	return count;
 }
 
@@ -586,7 +586,7 @@ void *dirThread(void *A)
 		//     add entries to file or directory queues
 		// repeat until directory queue is empty and all directory threads are waiting
 
-		printf("what\n");
+		// printf("what\n");
 		pthread_mutex_lock(&args->fileQ->lock);
 
 		char* dir = dir_dequeue(args->dirQ);
@@ -600,14 +600,14 @@ void *dirThread(void *A)
 			snprintf(dir_de, sizeof(dir_de), "%s/%s", dir, de);
 			if (!((strcmp(de, ".") == 0) || (strcmp(de, "..") == 0))) {
 				if (is_directory(dir_de) == 1) {
+					// pthread_mutex_unlock(&args->dirQ->lock);
 					enqueue(args->dirQ, dir_de);
 					// queue_print(args->dirQ);
 					// queue_print(args->fileQ);
 				}
 				else if (is_directory(dir_de) == 0) {
 					if (valid_suffix(de) == 1) {
-						// printf("\n%s\n", de);
-						printf("no\n");
+						// printf("no\n");
 						pthread_mutex_unlock(&args->fileQ->lock);
 						enqueue(args->fileQ, dir_de);
 						// queue_print(args->fileQ);
@@ -615,7 +615,7 @@ void *dirThread(void *A)
 				}
 			}
 		}
-		printf("hi\n");
+		// printf("hi\n");
 		pthread_mutex_unlock(&args->fileQ->lock);
 
 		free(dir);
@@ -637,9 +637,9 @@ void *fileThread(void *A) {
 		
 	targs *args = A;
 
-	while ((get_queue_count("File", args->fileQ) != 0) && (get_queue_count("Directory", args->dirQ) != 0)) {
-		if (get_queue_count("File", args->fileQ) != 0)
-		{
+	while ((get_queue_count("File", args->fileQ) != 0) ) {
+		// if (get_queue_count("File", args->fileQ) != 0)
+		// {
 			front = NULL;
 			numWords = 0;
 
@@ -667,7 +667,7 @@ void *fileThread(void *A) {
 			r_Node->numWords = numWords;
 			r_Node->WFD = front;
 			r_Node->next = NULL;
-		}
+		// }
 	}
 	return NULL;
 }
@@ -692,7 +692,7 @@ double get_kld(repoNode *repo, Node* node)
 		int compare = strcmp(curr_fp->word, curr_node->word);
 		if (compare == 0)
 		{
-			printf("%f * log2(%f / %f) = %f * %f = %f\n", curr_fp->frequency, curr_fp->frequency, curr_node->frequency, curr_fp->frequency, (log(curr_fp->frequency/curr_node->frequency)/log(2)), (curr_fp->frequency * (log(curr_fp->frequency/curr_node->frequency)/log(2))));
+			// printf("%f * log2(%f / %f) = %f * %f = %f\n", curr_fp->frequency, curr_fp->frequency, curr_node->frequency, curr_fp->frequency, (log(curr_fp->frequency/curr_node->frequency)/log(2)), (curr_fp->frequency * (log(curr_fp->frequency/curr_node->frequency)/log(2))));
 			sum += curr_fp->frequency * (log(curr_fp->frequency/curr_node->frequency)/log(2));
 			curr_fp = curr_fp->next;
 			curr_node = curr_node->next;
@@ -718,17 +718,18 @@ double get_jsd(repoNode* one, repoNode* two, Node* avg)
 	//printf("KLD ONE: %f\n", kld_one);
 	//printf("KLD TWO: %f\n", kld_two);
 	double jsd = sqrt(0.5 * (kld_one + kld_two));
-	printf("jsd- %f\n", jsd);
+	// printf("jsd- %f\n", jsd);
 	return jsd;
 }
 
-void build_node(Node* node, char* word, int count1, int count2)
+void build_node(Node* node, char* word, double freq1, double freq2)
 {
 	int size = strlen(word);
 	node->word = malloc((size+1)*sizeof(char));
 	strcpy(node->word, word);
-	node->count = count1 + count2;
-	node->frequency = (double) node->count / 2;
+	// node->count = count1 + count2;
+	node->frequency = (freq1+freq2) / 2;
+	// printf("Avg. freq: %f\n", node->frequency);
 }
 
 double comparison_avg(repoNode *one, repoNode *two)
@@ -744,12 +745,12 @@ double comparison_avg(repoNode *one, repoNode *two)
 	{
 		if (one_WFD == NULL)
 		{
-			build_node(curr_node, two_WFD->word, 0, two_WFD->count);
+			build_node(curr_node, two_WFD->word, 0, two_WFD->frequency);
 			two_WFD = two_WFD->next;
 		}
 		else if (two_WFD == NULL)
 		{
-			build_node(curr_node, one_WFD->word, one_WFD->count, 0);
+			build_node(curr_node, one_WFD->word, one_WFD->frequency, 0);
 			one_WFD = one_WFD->next;
 		}
 		else
@@ -757,18 +758,18 @@ double comparison_avg(repoNode *one, repoNode *two)
 			int one_vs_two = strcmp(one_WFD->word, two_WFD->word);
 			if (one_vs_two == 0)
 			{
-				build_node(curr_node, one_WFD->word, one_WFD->count ,two_WFD->count);
+				build_node(curr_node, one_WFD->word, one_WFD->frequency, two_WFD->frequency);
 				one_WFD = one_WFD->next;
 				two_WFD = two_WFD->next;
 			}
 			else if (one_vs_two > 0)
 			{
-				build_node(curr_node, two_WFD->word, 0, two_WFD->count);
+				build_node(curr_node, two_WFD->word, 0, two_WFD->frequency);
 				two_WFD = two_WFD->next;
 			}
 			else
 			{
-				build_node(curr_node, one_WFD->word, one_WFD->count, 0);
+				build_node(curr_node, one_WFD->word, one_WFD->frequency, 0);
 				one_WFD = one_WFD->next;
 			}
 		}
@@ -810,13 +811,13 @@ double compute_jsd(repoNode *f1, repoNode *f2)
 
 static int sort_comps(const void *r1, const void *r2)
 {
-	int comp = ((struct comp_result*) r1)->tokens - ((struct comp_result*)r2)->tokens;
+	int comp = ((struct comp_result*) r2)->tokens - ((struct comp_result*)r1)->tokens;
 	return comp;
 }
 
 void print_result(struct comp_result *result)
 {
-	printf("%f %s %s\n", result->distance, result->file1, result->file2);
+	printf("%f %d %s %s\n", result->distance, result->tokens, result->file1, result->file2);
 }
 
 unsigned get_num_files(repoNode* head)
@@ -876,7 +877,7 @@ int main(int argc, char **argv)
 		pthread_join(tid[i], NULL);
 	}
 
-	printList(repoHead);
+	// printList(repoHead);
 
 	//updated JSD methods
 	unsigned num_files = get_num_files(repoHead);
@@ -890,8 +891,8 @@ int main(int argc, char **argv)
 		f2 = f1->next;
 		while (f2 != NULL)
 		{
-			int num_thread = i % analysis_threads;
-			printf("[%d]%d: %s vs %s\n", num_thread, i, f1->filename, f2->filename);
+			// int num_thread = i % analysis_threads;
+			// printf("[%d]%d: %s vs %s\n", num_thread, i, f1->filename, f2->filename);
 			results[i].file1 = f1->filename;
 			results[i].file2 = f2->filename;
 			results[i].tokens = f1->numWords + f2->numWords;
