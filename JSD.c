@@ -70,11 +70,7 @@ int sb_append(strbuf_t *sb, char item) {
     return 0;
 }
 
-Node *front = NULL;
-int numWords = 0;
-
-void insert(char* word, int size) {
-    numWords++;
+Node* insert(char* word, int size, Node *front) {
 
     if (front == NULL) {
         front = malloc(sizeof(Node));
@@ -84,7 +80,7 @@ void insert(char* word, int size) {
         memcpy(newWord, word, size);
         front->word = newWord;
         front->count = 1;
-        return;
+        return front;
     }
     
     Node *ptr = front;
@@ -94,7 +90,9 @@ void insert(char* word, int size) {
         //word is already in the list
         if (strcmp(word, ptr->word) == 0) {
             ptr->count++;
-            return;
+			// printf("%s is not null\n", ptr->word);
+
+            return front;
         }
         //word is lexicographically less than word in list
         else if (strcmp(word, ptr->word) < 0) {
@@ -108,11 +106,15 @@ void insert(char* word, int size) {
             if (prev == NULL) {
                 newNode->next = ptr;
                 front = newNode;
-                return;
+				// printf("%s is not null\n", ptr->word);
+
+                return front;
             }
             prev->next = newNode;
             newNode->next = ptr;
-            return;
+			// printf("%s is not null\n", ptr->word);
+
+            return front;
         }
         else {
             prev = ptr;
@@ -128,10 +130,10 @@ void insert(char* word, int size) {
     newNode->count = 1;
     prev->next = newNode;
     newNode->next = NULL;
-    return;
+    return front;
 }
 
-void getWords(int fd) {
+Node* getWords(int fd, Node *front) {
 
     strbuf_t *sb = malloc(sizeof(strbuf_t));
     sb_init(sb, 1);
@@ -142,12 +144,11 @@ void getWords(int fd) {
     int end = 0; //ending index of a word
 
     while ((bytes = read(fd, buffer, size)) > 0) {
-
         end = 0;
 
         //sb has a word and the first element of buffer is WS  
         if (isspace(buffer[end]) && sb->used > 1) {
-            insert(sb->data, sb->used);
+            front = insert(sb->data, sb->used, front);
             sb_destroy(sb);
             end++;
         }
@@ -184,7 +185,7 @@ void getWords(int fd) {
                 break;
             }
             if (sb->length > 1) {
-                insert(sb->data, sb->used);
+                front = insert(sb->data, sb->used, front);
                 sb_destroy(sb);
             }
             end++;
@@ -195,14 +196,22 @@ void getWords(int fd) {
     }
     free(buffer);
     free(sb);
+	return front;
 }
 
-void getFrequencies(Node *front) {
+int getFrequencies(Node *front) {
     Node *curr = front;
+	int numWords = 0;
+	while (curr != NULL) {
+		numWords += curr->count;
+        curr = curr->next;
+    }
+	curr = front;
    	while (curr != NULL) {
         curr->frequency = (double) curr->count/numWords;
         curr = curr->next;
     }
+	return numWords;
 }
 
 void printList(repoNode *head) {
@@ -234,7 +243,7 @@ void cleanUp(repoNode *head) {
 		free(temp->filename);
 		free(temp);
     }
-	front = NULL;
+	// front = NULL;
 	repoHead = NULL;
 }
 
@@ -371,13 +380,17 @@ char* file_dequeue(Queue *Q)
     // now we have exclusive access and Queue is non-empty
     
     QNode *temp = Q->head;
-	int size = strlen(temp->data);
-	char* item = malloc((size+1)*sizeof(char));
-	strcpy(item, temp->data);
-    Q->head = Q->head->next;
-    free(temp->data);
-    free(temp);
-    Q->count--;
+	char* item = NULL;
+	if (temp != NULL) {
+		int size = strlen(temp->data);
+		item = malloc((size+1)*sizeof(char));
+		strcpy(item, temp->data);
+		Q->head = Q->head->next;
+		free(temp->data);
+		free(temp);
+		Q->count--;
+	}
+	
 
     pthread_mutex_unlock(&Q->lock);
     
@@ -562,6 +575,8 @@ int process_arguments(int argc, char **argv, Queue *dirQueue, Queue *fileQueue)
 typedef struct targs {
 	Queue *dirQ;
 	Queue *fileQ;
+	int id;
+	Node *front;
 }targs;
 
 int get_queue_count(char* queuetype, Queue *Q)
@@ -596,11 +611,9 @@ void *dirThread(void *A)
 		while ((directory_entry_p = readdir(directory_p))) 
 		{
 			char* de = directory_entry_p->d_name;
-			char sub[2] = "";
-			strncpy(sub, de, 1);
-			if (!(strcmp(sub, ".") == 0)) {
-				char dir_de[100] = "";
-				snprintf(dir_de, sizeof(dir_de), "%s/%s", dir, de);
+			char dir_de[100] = "";
+			snprintf(dir_de, sizeof(dir_de), "%s/%s", dir, de);
+			if (!((strcmp(de, ".") == 0) || (strcmp(de, "..") == 0))) {
 				if (is_directory(dir_de) == 1) {
 					// pthread_mutex_unlock(&args->dirQ->lock);
 					enqueue(args->dirQ, dir_de);
@@ -617,6 +630,7 @@ void *dirThread(void *A)
 				}
 			}
 		}
+		// printf("hi\n");
 		pthread_mutex_unlock(&args->fileQ->lock);
 
 		free(dir);
@@ -639,36 +653,35 @@ void *fileThread(void *A) {
 	targs *args = A;
 
 	while ((get_queue_count("File", args->fileQ) != 0) ) {
-		// if (get_queue_count("File", args->fileQ) != 0)
-		// {
-			front = NULL;
-			numWords = 0;
+		
+		args->front = NULL;
+		int numWords = 0;
 
-			char* name = file_dequeue(args->fileQ);
-			int size = strlen(name);
-			char* fileName = malloc((size+1)*sizeof(char));
-			strcpy(fileName, name);
-			free(name);
-			int fd = open(fileName, O_RDONLY);
-			getWords(fd);
-	    	getFrequencies(front);
+		char* name = file_dequeue(args->fileQ);
+		int size = strlen(name);
+		char* fileName = malloc((size+1)*sizeof(char));
+		strcpy(fileName, name);
+		free(name);
+		int fd = open(fileName, O_RDONLY);
+		printf("Thread: %d\n", args->id);
+		args->front = getWords(fd, args->front);
+		numWords = getFrequencies(args->front);
 
-			repoNode *r_Node = malloc(sizeof(repoNode));
-			if (repoHead == NULL) {
-				repoHead = r_Node;
+		repoNode *r_Node = malloc(sizeof(repoNode));
+		if (repoHead == NULL) {
+			repoHead = r_Node;
+		}
+		else {
+			repoNode *ptr = repoHead;
+			while (ptr->next != NULL) {
+				ptr = ptr->next;
 			}
-			else {
-				repoNode *ptr = repoHead;
-				while (ptr->next != NULL) {
-					ptr = ptr->next;
-				}
-				ptr->next = r_Node;
-			}
-			r_Node->filename = fileName;
-			r_Node->numWords = numWords;
-			r_Node->WFD = front;
-			r_Node->next = NULL;
-		// }
+			ptr->next = r_Node;
+		}
+		r_Node->filename = fileName;
+		r_Node->numWords = numWords;
+		r_Node->WFD = args->front;
+		r_Node->next = NULL;
 	}
 	return NULL;
 }
@@ -728,9 +741,8 @@ void build_node(Node* node, char* word, double freq1, double freq2)
 	int size = strlen(word);
 	node->word = malloc((size+1)*sizeof(char));
 	strcpy(node->word, word);
-	// node->count = count1 + count2;
 	node->frequency = (freq1+freq2) / 2;
-	// printf("Avg. freq: %f\n", node->frequency);
+	// printf("%s\n", node->word);
 }
 
 double comparison_avg(repoNode *one, repoNode *two)
@@ -851,6 +863,8 @@ int main(int argc, char **argv)
 	process_arguments(argc, argv, &dirQueue, &fileQueue);
 	print_optional_arguments();
 
+	Node **front = malloc(file_threads * sizeof(Node*));
+	
 	int totalThreads = directory_threads + file_threads;
 	pthread_t *tid = malloc(totalThreads * sizeof(pthread_t));
 	targs *args = malloc(totalThreads * sizeof(targs));
@@ -866,10 +880,12 @@ int main(int argc, char **argv)
 	}
 
 	//sleep(1);
-
+	int id = 0;
 	for (; i < totalThreads; i++) 
 	{
 		args[i].fileQ = &fileQueue;
+		args[i].id = id;
+		args[i].front = front[id++];
 		pthread_create(&tid[i], NULL, fileThread, &args[i]);
 	}
 	
@@ -914,7 +930,7 @@ int main(int argc, char **argv)
 
 	destroy(&dirQueue);
 	destroy(&fileQueue);
-
+	free(front);
 	free(tid);
 	free(args);
 	free(results);
