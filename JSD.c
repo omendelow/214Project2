@@ -920,6 +920,13 @@ int main(int argc, char **argv)
 
 	//updated JSD methods
 	unsigned num_files = get_num_files(repoHead);
+	if (num_files < 2) {
+		free(front);
+		free(tid);
+		free(args);
+		perror("Not enough files files to compare\n");
+		return(EXIT_FAILURE);
+	}
 	unsigned comparisons = num_files * (num_files - 1) / 2;
 	struct comp_result *results = malloc(comparisons * sizeof(struct comp_result));
 	i = 0;
