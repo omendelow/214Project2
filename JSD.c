@@ -850,6 +850,8 @@ int main(int argc, char **argv)
 		pthread_join(tid[i], NULL);
 	}
 
+	printList(repoHead);
+
 	//updated JSD methods
 	unsigned num_files = repoHead->WFD->count;
 	unsigned comparisons = num_files * (num_files - 1) / 2;
@@ -883,9 +885,6 @@ int main(int argc, char **argv)
 
 	destroy(&dirQueue);
 	destroy(&fileQueue);
-
-	printList(repoHead);
-	print_file_pairs(repoHead);
 
 	free(tid);
 	free(args);
