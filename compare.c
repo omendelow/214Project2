@@ -561,12 +561,12 @@ int process_arguments(int argc, char **argv, Queue *dirQueue, Queue *fileQueue)
 			if (is_directory(curr_arg) == 1)
 			{
 				enqueue(dirQueue, curr_arg);
-				printf("D: %s\n", curr_arg);
+				//printf("D: %s\n", curr_arg);
 			}
 			else
 			{
 				enqueue(fileQueue, curr_arg);
-				printf("F: %s\n", curr_arg);
+				//printf("F: %s\n", curr_arg);
 			}
 		}
 	}
@@ -836,7 +836,7 @@ static int sort_comps(const void *r1, const void *r2)
 
 void print_result(struct comp_result *result)
 {
-	printf("%f %d %s %s\n", result->distance, result->tokens, result->file1, result->file2);
+	printf("%f %s %s\n", result->distance, result->file1, result->file2);
 }
 
 unsigned get_num_files(repoNode* head)
@@ -883,7 +883,7 @@ int main(int argc, char **argv)
 	queue_init(&fileQueue);
 
 	process_arguments(argc, argv, &dirQueue, &fileQueue);
-	print_optional_arguments();
+	//print_optional_arguments();
 
 	Node **front = malloc(file_threads * sizeof(Node*));
 	
@@ -965,7 +965,6 @@ int main(int argc, char **argv)
 
 	qsort(results, comparisons, sizeof(struct comp_result), sort_comps);
 	
-	printf("\n");
 	for (i = 0; i < comparisons; i++)
 	{
 		print_result(&results[i]);
