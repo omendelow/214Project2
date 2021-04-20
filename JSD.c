@@ -596,9 +596,11 @@ void *dirThread(void *A)
 		while ((directory_entry_p = readdir(directory_p))) 
 		{
 			char* de = directory_entry_p->d_name;
-			char dir_de[100] = "";
-			snprintf(dir_de, sizeof(dir_de), "%s/%s", dir, de);
-			if (!((strcmp(de, ".") == 0) || (strcmp(de, "..") == 0))) {
+			char sub[2] = "";
+			strncpy(sub, de, 1);
+			if (!(strcmp(sub, ".") == 0)) {
+				char dir_de[100] = "";
+				snprintf(dir_de, sizeof(dir_de), "%s/%s", dir, de);
 				if (is_directory(dir_de) == 1) {
 					// pthread_mutex_unlock(&args->dirQ->lock);
 					enqueue(args->dirQ, dir_de);
@@ -615,7 +617,6 @@ void *dirThread(void *A)
 				}
 			}
 		}
-		// printf("hi\n");
 		pthread_mutex_unlock(&args->fileQ->lock);
 
 		free(dir);
