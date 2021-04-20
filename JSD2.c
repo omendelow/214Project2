@@ -685,7 +685,7 @@ struct comp_result
 	char *file1, *file2;
 	unsigned tokens; // word count of file 1 + file 2
 	double distance; // JSD between file 1 and file 2
-	pthread_mutex_t lock;
+	// pthread_mutex_t lock;
 };
 
 double get_kld(repoNode *repo, Node* node)
@@ -743,7 +743,7 @@ void build_node(Node* node, char* word, double freq1, double freq2)
 
 double comparison_avg(repoNode *one, repoNode *two)
 {
-	printf("comparison_avg starting\n");
+	// printf("comparison_avg starting\n");
 	Node *head = malloc(sizeof(Node));
 	head->next = NULL;
 	Node *curr_node = head;
@@ -791,7 +791,7 @@ double comparison_avg(repoNode *one, repoNode *two)
 	}
 	double to_return =  get_jsd(one, two, head);
 	cleanUpWFD(head);
-	printf("comparison_avg ending\n");
+	// printf("comparison_avg ending\n");
 	return to_return;
 }
 
@@ -815,10 +815,8 @@ void print_file_pairs(repoNode * head)
 
 double compute_jsd(repoNode *f1, repoNode *f2)
 {
-	printf("compute_jsd starting\n");
 	double distance = 0;
 	distance = comparison_avg(f1, f2);
-	printf("compute_jsd ending\n");
 	return distance;
 }
 
@@ -855,9 +853,7 @@ void *analysisThread(void *A) {
 
 	while (i < comparisons)
 	{
-		pthread_mutex_lock(&results->lock);
 		results[i].distance = compute_jsd(results[i].f1, results[i].f2);
-		pthread_mutex_unlock(&results->lock);
 		i += analysis_threads;
 	}
 	return NULL;
@@ -896,8 +892,6 @@ int main(int argc, char **argv)
 		pthread_create(&tid[i], NULL, dirThread, &args[i]);
 	}
 
-	//sleep(1);
-
 	for (; i < collection_threads; i++) 
 	{
 		args[i].fileQ = &fileQueue;
@@ -923,15 +917,11 @@ int main(int argc, char **argv)
 		f2 = f1->next;
 		while (f2 != NULL)
 		{
-			// int num_thread = i % analysis_threads;
-			// printf("[%d]%d: %s vs %s\n", num_thread, i, f1->filename, f2->filename);
 			results[i].file1 = f1->filename;
 			results[i].file2 = f2->filename;
 			results[i].f1 = f1;
 			results[i].f2 = f2;
 			results[i].tokens = f1->numWords + f2->numWords;
-			pthread_mutex_init(&results[i].lock, NULL);
-			//results[i].distance = compute_jsd(f1, f2);
 			f2 = f2->next;
 			i++;
 		}
@@ -945,7 +935,7 @@ int main(int argc, char **argv)
 		args2[i].comparisons = comparisons;
 		args2[i].thread_number = i;
 		args2[i].results = results;
-		pthread_create(&tid[i], NULL, analysisThread, &args2[i]);
+		pthread_create(&tid[i+collection_threads], NULL, analysisThread, &args2[i]);
 	}
 
 	for (i = collection_threads; i < totalThreads; i++)
@@ -953,7 +943,7 @@ int main(int argc, char **argv)
 		pthread_join(tid[i], NULL);
 	}
 
-	//qsort(results, comparisons, sizeof(struct comp_result), sort_comps);
+	qsort(results, comparisons, sizeof(struct comp_result), sort_comps);
 	
 	printf("\n");
 	for (i = 0; i < comparisons; i++)
@@ -963,7 +953,7 @@ int main(int argc, char **argv)
 
 	destroy(&dirQueue);
 	destroy(&fileQueue);
-
+	free(args2);
 	free(tid);
 	free(args);
 	free(results);
