@@ -1,4 +1,25 @@
 Akshar Patel aap279
 Oren Mendelow om144
 
-TO ADD: "Please include a brief description of your testing strategy. How did you determine that your program is correct? What sorts of files and scenarios did you check?"
+As the project consisted of many phases, it was important to test ease phase individually before testing the program as a whole.
+
+1. Taking in arguments
+	Using the same methods from our previous project, we discern between files and directories, adding each to their respective lists. For optional arguments, we ensure that it begins with a '-', and then check that it matches one of the four possible letter options. After that, thread-related arguments are ensured to be an integer above 0 and filename suffix arguments ensured to either be empty or begin with a '.' followed by at least one character. To test this, we simply tried numerous iterations of optional arguments.
+
+2. Valid file suffix
+	For an empty suffix, all files are allowed. To test this, we ran compare.c on a folder that contained files with different suffixes. That same folder was also helpful in testing whether or not our program could select only the files with a particular suffix.
+
+3. Directory depth
+	In order to ensure that nested directories would be traversed, test cases were passed with many layers of nested folders and files
+
+4. WFD
+	Manually counting and comparing our count to that of our program's was relatively simple as was confirming lexographical order. For larger files, we utilized print statements and lots and lots of time debugging.
+
+5. KLD/JSD
+	With only one example in the project doc, it was nearly impossible to decipher why the KLD and JSD were malfunctioning. In the end, a few groups from the class shared an example Archive that contained files and nested directories, and then compared our outputs. It's entirely possible we all made the same mistake and were all wrong, but it was much more helpful than not having each other as examples.
+
+6. Threads
+	The threads were extremely tricky to implement and took multiple days to debug. We worked hard to ensure shared data structures were locking and unlocking properly and threads were waiting properly. In the end, it was accomplished through test cases and lots and lots of print statements.
+
+7. Error recognition
+	Similar to above- with various test cases and edge cases. With finishing this project being quite the time crunch, we're sure we missed certain edge cases, but did our best.
