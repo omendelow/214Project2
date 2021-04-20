@@ -564,17 +564,30 @@ typedef struct targs {
 	Queue *fileQ;
 }targs;
 
+int get_queue_count(char* queuetype, Queue *Q)
+{
+	int count = 0;
+	pthread_mutex_lock(&Q->lock);
+	count = Q->count;
+	pthread_mutex_unlock(&Q->lock);
+	printf("%s Queue count: %d\n", queuetype, count);
+	return count;
+}
+
 void *dirThread(void *A) 
 {
 	targs *args = A;
 
 	//while directory queue is not empty
-	while (args->dirQ->count != 0) 
+	while (get_queue_count("Directory", args->dirQ) != 0) 
 	{
 		// read directory name from queue
 		// open directory
 		//     add entries to file or directory queues
 		// repeat until directory queue is empty and all directory threads are waiting
+
+		printf("what\n");
+		pthread_mutex_lock(&args->fileQ->lock);
 
 		char* dir = dir_dequeue(args->dirQ);
 
@@ -594,14 +607,20 @@ void *dirThread(void *A)
 				else if (is_directory(dir_de) == 0) {
 					if (valid_suffix(de) == 1) {
 						// printf("\n%s\n", de);
+						printf("no\n");
+						pthread_mutex_unlock(&args->fileQ->lock);
 						enqueue(args->fileQ, dir_de);
 						// queue_print(args->fileQ);
 					}
 				}
 			}
 		}
+		printf("hi\n");
+		pthread_mutex_unlock(&args->fileQ->lock);
+
 		free(dir);
 		free(directory_p);
+
 	}
 	return NULL;	
 }
@@ -618,34 +637,37 @@ void *fileThread(void *A) {
 		
 	targs *args = A;
 
-	while (args->fileQ->count != 0) {
-		front = NULL;
-		numWords = 0;
+	while ((get_queue_count("File", args->fileQ) != 0) && (get_queue_count("Directory", args->dirQ) != 0)) {
+		if (get_queue_count("File", args->fileQ) != 0)
+		{
+			front = NULL;
+			numWords = 0;
 
-		char* name = file_dequeue(args->fileQ);
-		int size = strlen(name);
-		char* fileName = malloc((size+1)*sizeof(char));
-		strcpy(fileName, name);
-		free(name);
-		int fd = open(fileName, O_RDONLY);
-		getWords(fd);
-    	getFrequencies(front);
+			char* name = file_dequeue(args->fileQ);
+			int size = strlen(name);
+			char* fileName = malloc((size+1)*sizeof(char));
+			strcpy(fileName, name);
+			free(name);
+			int fd = open(fileName, O_RDONLY);
+			getWords(fd);
+	    	getFrequencies(front);
 
-		repoNode *r_Node = malloc(sizeof(repoNode));
-		if (repoHead == NULL) {
-			repoHead = r_Node;
-		}
-		else {
-			repoNode *ptr = repoHead;
-			while (ptr->next != NULL) {
-				ptr = ptr->next;
+			repoNode *r_Node = malloc(sizeof(repoNode));
+			if (repoHead == NULL) {
+				repoHead = r_Node;
 			}
-			ptr->next = r_Node;
+			else {
+				repoNode *ptr = repoHead;
+				while (ptr->next != NULL) {
+					ptr = ptr->next;
+				}
+				ptr->next = r_Node;
+			}
+			r_Node->filename = fileName;
+			r_Node->numWords = numWords;
+			r_Node->WFD = front;
+			r_Node->next = NULL;
 		}
-		r_Node->filename = fileName;
-		r_Node->numWords = numWords;
-		r_Node->WFD = front;
-		r_Node->next = NULL;
 	}
 	return NULL;
 }
@@ -841,17 +863,13 @@ int main(int argc, char **argv)
 		pthread_create(&tid[i], NULL, dirThread, &args[i]);
 	}
 
-
-	sleep(1);
-
+	//sleep(1);
 
 	for (; i < totalThreads; i++) 
 	{
 		args[i].fileQ = &fileQueue;
 		pthread_create(&tid[i], NULL, fileThread, &args[i]);
 	}
-	
-
 	
 	for (i = 0; i < totalThreads; i++) 
 	{
