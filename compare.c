@@ -419,7 +419,6 @@ char* file_name_suffix = ".txt";
 int valid_suffix(char* file_path)
 {
 	int suffix_length = strlen(file_name_suffix);
-	// printf("%d\n", suffix_length);
 	int file_path_index = strlen(file_path) - 1;
 
 	if (suffix_length == 0) {
@@ -457,8 +456,7 @@ int is_directory(char *name)
 
 	if (err == -1)
 	{
-		perror("Error");
-		exit(EXIT_FAILURE);
+		perror("Directory cannot be opened\n");
 	}
 	if (S_ISDIR(data.st_mode))
 	{
@@ -504,7 +502,8 @@ int is_argument(char* str)
 				return 1;
 			}
 			// invalid argument
-			return 2;
+			perror("Invalid option\n");
+			exit(EXIT_FAILURE);
 		}
 		char parameter = tolower(str[1]);
 		if (parameter == 'd')
@@ -524,18 +523,28 @@ int is_argument(char* str)
 		}
 		else if (parameter == 's')
 		{
-			int suffix_length = strlen(str) - 1;
-			char *suffix = malloc(sizeof(char) * suffix_length);
-			for (int i = 0; i < suffix_length; i++) 
+			// file name suffix
+			if (str[2] == '.' && strlen(str) > 3)
 			{
-				suffix[i] = str[i+2];
+				int suffix_length = strlen(str) - 1;
+				char *suffix = malloc(sizeof(char) * suffix_length);
+				for (int i = 0; i < suffix_length; i++) 
+				{
+					suffix[i] = str[i+2];
+				}
+				file_name_suffix = suffix;
 			}
-			file_name_suffix = suffix;
+			else
+			{
+				// invalid argument
+				return 2;
+			}
 		}
 		else
 		{
 			// invalid argument
-			return 2;
+			perror("Invalid option\n");
+			exit(EXIT_FAILURE);
 		}
 		return 1;
 	}
@@ -660,6 +669,7 @@ void *fileThread(void *A) {
 		strcpy(fileName, name);
 		free(name);
 		int fd = open(fileName, O_RDONLY);
+		if (fd == -1) perror("File cannot be opened\n");
 		args->front = getWords(fd, args->front);
 		numWords = getFrequencies(args->front);
 
@@ -883,6 +893,8 @@ int main(int argc, char **argv)
 	pthread_t *tid = malloc(totalThreads * sizeof(pthread_t));
 	targs *args = malloc(totalThreads * sizeof(targs));
 
+	int err;
+
 	int i = 0;
 	for (i = 0; i < directory_threads; i++) 
 	{
@@ -890,7 +902,11 @@ int main(int argc, char **argv)
 		args[i].fileQ = &fileQueue;
 		args[i].dirQ->activeThreads = directory_threads;
 		// args[i].dirQ->activeThreads = 0;
-		pthread_create(&tid[i], NULL, dirThread, &args[i]);
+		err = pthread_create(&tid[i], NULL, dirThread, &args[i]);
+		if (err != 0) {
+			perror("pthread_create\n");
+			return EXIT_FAILURE;
+		}
 	}
 
 	//sleep(1);
@@ -899,7 +915,11 @@ int main(int argc, char **argv)
 	{
 		args[i].fileQ = &fileQueue;
 		args[i].front = front[id++];
-		pthread_create(&tid[i], NULL, fileThread, &args[i]);
+		err = pthread_create(&tid[i], NULL, fileThread, &args[i]);
+		if (err != 0) {
+			perror("pthread_create\n");
+			return EXIT_FAILURE;
+		}
 	}
 	
 	for (i = 0; i < collection_threads; i++) 
@@ -946,7 +966,11 @@ int main(int argc, char **argv)
 		args2[i].comparisons = comparisons;
 		args2[i].thread_number = i;
 		args2[i].results = results;
-		pthread_create(&tid[i+collection_threads], NULL, analysisThread, &args2[i]);
+		err = pthread_create(&tid[i+collection_threads], NULL, analysisThread, &args2[i]);
+		if (err != 0) {
+			perror("pthread_create\n");
+			return EXIT_FAILURE;
+		}
 	}
 
 	for (i = collection_threads; i < totalThreads; i++)
